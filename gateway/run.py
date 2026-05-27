@@ -3226,6 +3226,21 @@ class GatewayRunner:
                     )
                     continue
 
+                # If notify_dm_only is set for this platform, skip active-session
+                # notifications to any chat that isn't the configured home channel.
+                # This keeps lifecycle pings out of group chats while preserving
+                # them for the operator's DM.
+                if platform_cfg is not None and platform_cfg.extra.get("notify_dm_only"):
+                    home = self.config.get_home_channel(platform)
+                    home_chat = str(home.chat_id) if home and home.chat_id else None
+                    if home_chat and str(chat_id) != home_chat:
+                        logger.info(
+                            "Shutdown notification suppressed for group chat %s:%s (notify_dm_only=true)",
+                            platform_str,
+                            chat_id,
+                        )
+                        continue
+
                 # Include thread_id if present so the message lands in the
                 # correct forum topic / thread.
                 metadata = {"thread_id": thread_id} if thread_id else None
@@ -14123,6 +14138,18 @@ class GatewayRunner:
                 )
                 return None
 
+            # Suppress restart notification for group chats when notify_dm_only=true.
+            if platform_cfg is not None and platform_cfg.extra.get("notify_dm_only"):
+                home = self.config.get_home_channel(platform)
+                home_chat = str(home.chat_id) if home and home.chat_id else None
+                if home_chat and str(chat_id) != home_chat:
+                    logger.info(
+                        "Restart notification suppressed for group chat %s:%s (notify_dm_only=true)",
+                        platform_str,
+                        chat_id,
+                    )
+                    return None
+
             metadata = {"thread_id": thread_id} if thread_id else None
             result = await adapter.send(
                 str(chat_id),
@@ -14167,7 +14194,7 @@ class GatewayRunner:
         """
         delivered: set[tuple[str, str, Optional[str]]] = set()
         skipped = skip_targets or set()
-        message = "♻️ Gateway online — Hermes is back and ready."
+        message = "♻️ Morpheus is back. Systems nominal — I'm listening."
 
         for platform, adapter in self.adapters.items():
             home = self.config.get_home_channel(platform)
