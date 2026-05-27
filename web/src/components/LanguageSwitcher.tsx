@@ -103,8 +103,10 @@ export function LanguageSwitcher({ dropUp = false }: LanguageSwitcherProps) {
         <div
           aria-label={sheetTitle}
           className={cn(
-            "absolute right-0 z-50 min-w-[10rem] rounded-md border border-border bg-popover shadow-md py-1 max-h-80 overflow-y-auto",
-            dropUp ? "bottom-full mb-1" : "top-full mt-1",
+            "absolute z-50 min-w-[10rem] rounded-md border border-border bg-popover shadow-md py-1 max-h-80 overflow-y-auto",
+            dropUp
+              ? "left-0 bottom-full mb-1"
+              : "right-0 top-full mt-1",
           )}
           role="listbox"
         >

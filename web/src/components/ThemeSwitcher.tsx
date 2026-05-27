@@ -64,23 +64,15 @@ export function ThemeSwitcher({ dropUp = false }: ThemeSwitcherProps) {
     <div ref={wrapperRef} className="relative">
       <Button
         ghost
+        size="icon"
         onClick={() => setOpen((o) => !o)}
-        className="px-2 py-1 normal-case tracking-normal font-normal text-xs text-text-secondary hover:text-foreground"
-        title={t.theme?.switchTheme ?? "Switch theme"}
+        className="text-text-secondary hover:text-foreground"
+        title={`${t.theme?.switchTheme ?? "Switch theme"}: ${label}`}
         aria-label={t.theme?.switchTheme ?? "Switch theme"}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="inline-flex items-center gap-1.5">
-          <Palette className="h-3.5 w-3.5" />
-
-          <Typography
-            mondwest
-            className="hidden sm:inline text-display tracking-wide text-xs"
-          >
-            {label}
-          </Typography>
-        </span>
+        <Palette className="h-3.5 w-3.5" />
       </Button>
 
       {useMobileSheet && (
