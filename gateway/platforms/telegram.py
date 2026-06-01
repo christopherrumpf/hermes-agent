@@ -4370,14 +4370,70 @@ class TelegramAdapter(BasePlatformAdapter):
 
     # ── Group mention gating ──────────────────────────────────────────────
 
-    def _telegram_require_mention(self) -> bool:
-        """Return whether group chats should require an explicit bot trigger."""
+    def _telegram_require_mention(self, chat_id: Optional[str] = None) -> bool:
+        """Return whether group chats should require an explicit bot trigger.
+
+        When ``require_mention`` is enabled globally, a two-person group chat
+        (bot + exactly one human) is treated as a pseudo-DM: the mention
+        requirement is waived. Groups with 3+ members retain the normal gate.
+
+        Member counts are fetched asynchronously and cached (stale-while-
+        revalidate). First message in a brand-new group defaults to requiring
+        mention until the count is known.
+        """
         configured = self.config.extra.get("require_mention")
         if configured is not None:
             if isinstance(configured, str):
-                return configured.lower() in {"true", "1", "yes", "on"}
-            return bool(configured)
-        return os.getenv("TELEGRAM_REQUIRE_MENTION", "false").lower() in {"true", "1", "yes", "on"}
+                require = configured.lower() in {"true", "1", "yes", "on"}
+            else:
+                require = bool(configured)
+        else:
+            require = os.getenv("TELEGRAM_REQUIRE_MENTION", "false").lower() in {"true", "1", "yes", "on"}
+
+        if not require:
+            return False
+        if not chat_id:
+            return require
+
+        import time as _time
+        now = _time.monotonic()
+        cached = self._member_count_cache.get(chat_id)
+        if cached is not None:
+            count, expiry = cached
+            if now >= expiry:
+                # Stale — refresh in background, serve stale value immediately.
+                try:
+                    import asyncio as _asyncio
+                    loop = _asyncio.get_running_loop()
+                    loop.create_task(self._refresh_member_count(chat_id))
+                except Exception:
+                    pass
+            return count != 2  # 2 = bot + exactly 1 human → no mention needed
+
+        # No cached value yet — schedule fetch, safe fallback until populated.
+        try:
+            import asyncio as _asyncio
+            loop = _asyncio.get_running_loop()
+            loop.create_task(self._refresh_member_count(chat_id))
+        except Exception:
+            pass
+        return require
+
+    # Cache: chat_id → (member_count, expiry_timestamp)
+    _MEMBER_COUNT_TTL: int = 1800  # 30 minutes
+    _member_count_cache: dict = {}
+
+    async def _refresh_member_count(self, chat_id: str) -> None:
+        """Fetch and cache the member count for a group chat asynchronously."""
+        import time as _time
+        if not self._bot:
+            return
+        try:
+            count = await self._bot.get_chat_member_count(int(chat_id))
+            self._member_count_cache[chat_id] = (count, _time.monotonic() + self._MEMBER_COUNT_TTL)
+            logger.debug("[%s] Member count for chat %s: %d", self.name, chat_id, count)
+        except Exception as exc:
+            logger.debug("[%s] Could not fetch member count for chat %s: %s", self.name, chat_id, exc)
 
     def _telegram_observe_unmentioned_group_messages(self) -> bool:
         """Return whether skipped unmentioned group messages are stored as context.
@@ -4902,7 +4958,7 @@ class TelegramAdapter(BasePlatformAdapter):
             return True
         if chat_id_str in self._telegram_free_response_chats():
             return True
-        if not self._telegram_require_mention():
+        if not self._telegram_require_mention(chat_id=chat_id_str):
             return True
         if self._is_reply_to_bot(message):
             return True

@@ -879,6 +879,9 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir_resolved = scripts_dir.resolve()
 
+    skills_dir = _get_hermes_home() / "skills"
+    skills_dir_resolved = skills_dir.resolve()
+
     raw = Path(script_path).expanduser()
     if raw.is_absolute():
         path = raw.resolve()
@@ -886,13 +889,24 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
         path = (scripts_dir / raw).resolve()
 
     # Guard against path traversal, absolute path injection, and symlink
-    # escape — scripts MUST reside within HERMES_HOME/scripts/.
+    # escape — scripts MUST reside within HERMES_HOME/scripts/ or
+    # HERMES_HOME/skills/ (skill-collocated scripts are first-party trusted).
+    in_scripts = False
+    in_skills = False
     try:
         path.relative_to(scripts_dir_resolved)
+        in_scripts = True
     except ValueError:
+        pass
+    try:
+        path.relative_to(skills_dir_resolved)
+        in_skills = True
+    except ValueError:
+        pass
+    if not in_scripts and not in_skills:
         return False, (
-            f"Blocked: script path resolves outside the scripts directory "
-            f"({scripts_dir_resolved}): {script_path!r}"
+            f"Blocked: script path resolves outside the trusted directories "
+            f"({scripts_dir_resolved}, {skills_dir_resolved}): {script_path!r}"
         )
 
     if not path.exists():
